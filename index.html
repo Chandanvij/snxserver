@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Car Racing Game</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+    #roadCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      filter: saturate(130%) brightness(110%) contrast(120%);
+    }
+    #gameObjectContainer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    #scoreBox {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      color: #fff;
+      padding: 10px 15px;
+      border-radius: 10px;
+      font-size: 18px;
+      text-shadow: 1px 1px 2px black;
+      z-index: 10;
+    }
+    #leftBtn, #rightBtn {
+      position: absolute;
+      bottom: 10%;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      border: none;
+      font-size: 30px;
+      padding: 10px;
+      z-index: 10;
+    }
+    #leftBtn { left: 10px; }
+    #rightBtn { right: 10px; }
+    #playerCar, .obstacle, .coin {
+      position: absolute;
+      bottom: 12%;
+      z-index: 4;
+      filter: drop-shadow(2px 2px 5px black);
+    }
+    .obstacle {
+      width: calc(var(--road-width) / 4.9);
+    }
+    .coin {
+      width: 40px;
+    }
+    #menuOverlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+    #startBtn {
+      padding: 20px 40px;
+      font-size: 24px;
+      background: gold;
+      border: none;
+      border-radius: 10px;
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+    #gradientOverlay {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 20%;
+      background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+      z-index: 5;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="roadCanvas"></canvas>
+    <div id="gradientOverlay"></div>
+    <div id="gameObjectContainer">
+      <img id="playerCar" src="https://buildwithmobile.lovestoblog.com/car/player_car.png" />
+    </div>
+    <div id="scoreBox">Score: 0</div>
+    <button id="leftBtn">←</button>
+    <button id="rightBtn">→</button>
+    <div id="menuOverlay">
+      <button id="startBtn">Let's Start</button>
+    </div>
+  </div>
+
+  <audio id="bgSound" src="https://buildwithmobile.lovestoblog.com/car/carsound.mp3" loop></audio>
+  <audio id="crashSound" src="https://buildwithmobile.lovestoblog.com/car/carhit.mp3"></audio>
+  <audio id="coinSound" src="https://buildwithmobile.lovestoblog.com/car/collect.wav"></audio>
+
+  <script>
+    const canvas = document.getElementById("roadCanvas");
+    const ctx = canvas.getContext("2d");
+    const container = document.getElementById("gameContainer");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const roadImg = new Image();
+    roadImg.src = "https://buildwithmobile.lovestoblog.com/car/road.jpg";
+
+    let bgY = 0, speed = 4;
+    const playerCar = document.getElementById("playerCar");
+    const scoreBox = document.getElementById("scoreBox");
+    const gameObjectContainer = document.getElementById("gameObjectContainer");
+    const bgSound = document.getElementById("bgSound");
+    const crashSound = document.getElementById("crashSound");
+    const coinSound = document.getElementById("coinSound");
+    const startBtn = document.getElementById("startBtn");
+    const menuOverlay = document.getElementById("menuOverlay");
+
+    let roadWidth = canvas.width * 0.6;
+    document.documentElement.style.setProperty('--road-width', roadWidth + 'px');
+
+    let playerX = canvas.width / 2;
+    let score = 0;
+    let gameState = 'menu';
+
+    let obstacles = [];
+    let coins = [];
+
+    function drawRoad() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      bgY += speed;
+      if (bgY > canvas.height) bgY = 0;
+      ctx.drawImage(roadImg, 0, bgY - canvas.height, canvas.width, canvas.height);
+      ctx.drawImage(roadImg, 0, bgY, canvas.width, canvas.height);
+    }
+
+    function spawnObstacle() {
+      const img = document.createElement('img');
+      img.src = `https://buildwithmobile.lovestoblog.com/car/obstacle${Math.ceil(Math.random()*4)}.png`;
+      img.className = 'obstacle';
+      img.style.position = 'absolute';
+      const lane = Math.floor(Math.random() * 3);
+      img.style.left = ((canvas.width - roadWidth) / 2 + lane * roadWidth / 3) + 'px';
+      img.style.top = '-100px';
+      gameObjectContainer.appendChild(img);
+      obstacles.push({el: img, y: -100});
+    }
+
+    function spawnCoin() {
+      const img = document.createElement('img');
+      img.src = `https://buildwithmobile.lovestoblog.com/car/coin.gif`;
+      img.className = 'coin';
+      img.style.position = 'absolute';
+      const lane = Math.floor(Math.random() * 3);
+      img.style.left = ((canvas.width - roadWidth) / 2 + lane * roadWidth / 3 + 20) + 'px';
+      img.style.top = '-50px';
+      gameObjectContainer.appendChild(img);
+      coins.push({el: img, y: -50});
+    }
+
+    function updateObjects() {
+      obstacles.forEach((obj, i) => {
+        obj.y += speed;
+        obj.el.style.top = obj.y + 'px';
+        if (obj.y > canvas.height) {
+          gameObjectContainer.removeChild(obj.el);
+          obstacles.splice(i, 1);
+        } else if (isColliding(obj.el, playerCar)) {
+          crashSound.play();
+          endGame();
+        }
+      });
+
+      coins.forEach((coin, i) => {
+        coin.y += speed;
+        coin.el.style.top = coin.y + 'px';
+        if (coin.y > canvas.height) {
+          gameObjectContainer.removeChild(coin.el);
+          coins.splice(i, 1);
+        } else if (isColliding(coin.el, playerCar)) {
+          coinSound.play();
+          score += 5;
+          updateScore();
+          gameObjectContainer.removeChild(coin.el);
+          coins.splice(i, 1);
+        }
+      });
+    }
+
+    function updateScore() {
+      scoreBox.textContent = `Score: ${score}`;
+    }
+
+    function isColliding(a, b) {
+      const rect1 = a.getBoundingClientRect();
+      const rect2 = b.getBoundingClientRect();
+      return !(rect1.right < rect2.left || rect1.left > rect2.right ||
+               rect1.bottom < rect2.top || rect1.top > rect2.bottom);
+    }
+
+    function movePlayer(dir) {
+      const step = roadWidth / 3;
+      playerX += dir * step;
+      const leftBoundary = (canvas.width - roadWidth) / 2;
+      const rightBoundary = canvas.width - leftBoundary;
+      if (playerX < leftBoundary + step / 2) playerX = leftBoundary + step / 2;
+      if (playerX > rightBoundary - step / 2) playerX = rightBoundary - step / 2;
+      playerCar.style.left = (playerX - playerCar.offsetWidth / 2) + 'px';
+    }
+
+    document.getElementById("leftBtn").onclick = () => movePlayer(-1);
+    document.getElementById("rightBtn").onclick = () => movePlayer(1);
+
+    function endGame() {
+      gameState = 'gameOver';
+      bgSound.pause();
+      setTimeout(() => location.reload(), 2000);
+    }
+
+    function gameLoop() {
+      if (gameState === 'playing') {
+        drawRoad();
+        updateObjects();
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    startBtn.onclick = () => {
+      menuOverlay.style.display = 'none';
+      gameState = 'playing';
+      playerX = canvas.width / 2;
+      movePlayer(0);
+      setInterval(() => {
+        if (gameState === 'playing') spawnObstacle();
+      }, 2000);
+      setInterval(() => {
+        if (gameState === 'playing') spawnCoin();
+      }, 3000);
+      bgSound.play();
+      gameLoop();
+    };
+
+    window.addEventListener('resize', () => location.reload());
+  </script>
+</body>
+</html>
